@@ -1,0 +1,41 @@
+# Example configuration for a single ActivePolyBD run.
+# All quantities are in reduced units (b = 1, k_BT = 1, tau_B = 1).
+#
+#   julia -t auto scripts/run.jl scripts/example.toml
+
+[system]
+N          = 40        # number of monomers (>= 3)
+dimensions = 3         # fixed at 3 in v1
+seed       = 12345     # base RNG seed; replica r uses seed XOR-derived stream
+init       = "line"    # "line" (perturbed straight chain) or "saw"
+
+[interactions.bonded]
+type = "harmonic"      # registry key
+k    = 100.0           # K_sp = 100 k_BT/b^2 (reduced value 100)
+r0   = 1.0             # rest length = b
+
+[interactions.nonbonded]
+type   = "soft_repulsive"   # one-sided harmonic core, r < cutoff only
+k      = 100.0
+cutoff = 1.0                # = b
+
+[activity]
+type = "tangential"    # "tangential" or "none"
+Pe   = 10.0            # reduced active-force magnitude = Pe; ends stay passive
+
+[integrator]
+dt                  = 1e-3
+equilibration_steps = 100_000
+production_steps    = 1_000_000
+
+[output]
+xyz_file         = "traj.xyz"
+xyz_every        = 5000
+log_file         = "obs.dat"
+log_every        = 1000
+checkpoint_file  = "checkpoint.jls"
+checkpoint_every = 500_000
+
+[replicas]
+n_replicas = 1
+parallel   = "serial"   # "serial" | "threads"
