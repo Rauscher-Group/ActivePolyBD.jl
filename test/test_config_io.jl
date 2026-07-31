@@ -81,6 +81,12 @@ end
     sys = System(pos; bonded=HarmonicBond(100.0, 1.0),
                  pair=SoftRepulsive(100.0, 1.0), activity=TangentialActivity(3.0))
 
+    # :line init already starts bead 1 at the origin, so displace the chain
+    # first — otherwise the recentering test would pass vacuously.
+    offset = ActivePolyBD.Vec3(4.0, -2.5, 1.5)
+    sys.positions .= [r + offset for r in sys.positions]
+    before = copy(sys.positions)
+
     mktemp() do path, io
         write_xyz_frame!(io, sys, 100, 0.1, radius_of_gyration(sys.positions))
         flush(io)
@@ -90,15 +96,29 @@ end
         @test startswith(lines[3], "O")            # first bead: passive end
         @test startswith(lines[4], "C")            # interior
         @test startswith(lines[8], "O")            # last bead: passive end
+
+        coords(l) = parse.(Float64, split(l)[2:4])
+        @test coords(lines[3]) == [0.0, 0.0, 0.0]  # bead 1 placed at the origin
+        # A shift, not a distortion: separations survive and the last bead
+        # lands exactly at r_N − r_1.
+        @test isapprox(norm(coords(lines[4]) .- coords(lines[3])),
+                       norm(sys.positions[2] - sys.positions[1]); rtol=1e-6)
+        @test isapprox(coords(lines[8]),
+                       collect(sys.positions[6] - sys.positions[1]); rtol=1e-6)
+        @test sys.positions == before              # write-time shift only
     end
 
     mktemp() do path, io
         write_log_header(io)
-        write_log_row!(io, 100, 0.1, 1.23, center_of_mass(sys.positions))
+        write_log_row!(io, 100, 0.1, 1.23, center_of_mass(sys.positions),
+                       end_to_end_sq(sys.positions))
         flush(io)
         lines = readlines(path)
         @test startswith(lines[1], "#")
-        @test length(split(lines[2])) == 6
+        @test split(lines[1])[end] == "Re2"        # R_e² appended last
+        @test length(split(lines[2])) == 7
+        @test isapprox(parse(Float64, split(lines[2])[7]),
+                       end_to_end_sq(sys.positions); rtol=1e-6)
     end
 end
 

@@ -29,8 +29,9 @@ equilibration_steps = 100_000
 production_steps    = 1_000_000
 
 [output]
-xyz_file         = "traj.xyz"
+xyz_file         = "traj.xyz"   # monomer 1 is written at the origin in every frame
 xyz_every        = 5000
+# columns: step time Rg cm_x cm_y cm_z Re2   (Re2 = end-to-end distance squared)
 log_file         = "obs.dat"
 log_every        = 1000
 checkpoint_file  = "checkpoint.jls"

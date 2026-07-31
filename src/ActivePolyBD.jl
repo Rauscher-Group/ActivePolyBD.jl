@@ -46,7 +46,7 @@ export compute_forces!, bd_step!
 
 # Observables
 export center_of_mass, gyration_tensor, radius_of_gyration, radius_of_gyration_sq
-export gyration_eigenvalues, end_to_end, backbone_cosangles
+export gyration_eigenvalues, end_to_end, end_to_end_sq, backbone_cosangles
 export AsphericityAccumulator, asphericity
 
 # Init / IO

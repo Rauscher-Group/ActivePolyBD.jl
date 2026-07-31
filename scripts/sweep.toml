@@ -6,14 +6,15 @@
 # the parent output directory; each Pe gets its own subdirectory of logs.
 
 [sweep]
-pe_values = [0.0, 0.1, 1.0, 5.0, 10.0, 50.0]
+#pe_values = [0.0, 0.1, 1.0, 5.0, 10.0, 50.0]
+pe_values = [0.0, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0]
 out_dir   = "sweep_out"
 
 [system]
-N          = 40
+N          = 20
 dimensions = 3
-seed       = 20240709
-init       = "line"
+seed       = 51515
+init       = "saw"
 
 [interactions.bonded]
 type = "harmonic"
@@ -31,17 +32,18 @@ Pe   = 0.0
 
 [integrator]
 dt                  = 1e-3
-equilibration_steps = 200_000
-production_steps    = 2_000_000
+equilibration_steps = 10_000_000
+production_steps    = 100_000_000   
 
 [output]
-xyz_file         = "traj.xyz"
-xyz_every        = 20000
+xyz_file         = "traj.xyz"   	# monomer 1 is written at the origin in every frame
+xyz_every        = 10_000		# total of 10^4 frames
+# columns: step time Rg cm_x cm_y cm_z Re2   (Re2 = end-to-end distance squared)
 log_file         = "obs.dat"
-log_every        = 500
+log_every        = 10_000
 checkpoint_file  = "checkpoint.jls"
-checkpoint_every = 1_000_000
+checkpoint_every = 10_000_000
 
 [replicas]
-n_replicas = 4
+n_replicas = 10
 parallel   = "threads"

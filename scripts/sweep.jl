@@ -15,6 +15,10 @@ using ActivePolyBD
 using TOML
 using Printf
 
+# Included at top level: including inside `main` and then touching the module
+# binding in the same world age trips Julia 1.12's stricter world-age rules.
+include(joinpath(@__DIR__, "..", "analysis", "rg_distribution.jl"))
+
 pe_dirname(pe) = "pe_" * replace(@sprintf("%g", pe), "." => "p", "-" => "m")
 
 function main(args)
@@ -50,8 +54,7 @@ function main(args)
     end
 
     @info "All sweep points done; running analysis"
-    include(joinpath(@__DIR__, "..", "analysis", "rg_distribution.jl"))
-    Base.invokelatest(RgDistribution.analyze, out_dir)
+    RgDistribution.analyze(out_dir)
     return 0
 end
 

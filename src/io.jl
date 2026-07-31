@@ -21,13 +21,20 @@ const ELEM_INTERIOR = "C"  # active interior monomers
 
 Append one extended-XYZ frame: count, a `step time Rg` comment, then
 `element x y z` per monomer.
+
+Coordinates are shifted so monomer 1 (a passive chain end) sits at the origin,
+which keeps the chain from wandering out of view as the center of mass drifts.
+The shift is applied at write time only: `sys.positions` is untouched, the free
+CM drift stays physical (§14) and is still recorded in the scalar log, and `Rg`
+is translation-invariant.
 """
 function write_xyz_frame!(io::IO, sys::System, step::Integer, time::Real, Rg::Real)
     N = sys.N
     println(io, N)
     @printf(io, "step=%d time=%.6g Rg=%.6g\n", step, time, Rg)
+    origin = sys.positions[1]
     @inbounds for i in 1:N
-        r = sys.positions[i]
+        r = sys.positions[i] - origin
         @printf(io, "%s %.8g %.8g %.8g\n", element_label(i, N), r[1], r[2], r[3])
     end
     return io
@@ -39,23 +46,25 @@ end
     write_log_header(io; extra_cols=String[])
 
 Comment header for the scalar `.dat` log. Base columns are
-`step time Rg cm_x cm_y cm_z`; `extra_cols` appends optional column names.
+`step time Rg cm_x cm_y cm_z Re2`; `extra_cols` appends optional column names.
+`Re2` is last so column indices of the earlier fields are unchanged.
 """
 function write_log_header(io::IO; extra_cols::Vector{String}=String[])
-    cols = ["step", "time", "Rg", "cm_x", "cm_y", "cm_z"]
+    cols = ["step", "time", "Rg", "cm_x", "cm_y", "cm_z", "Re2"]
     append!(cols, extra_cols)
     println(io, "# ", join(cols, " "))
     return io
 end
 
 """
-    write_log_row!(io, step, time, Rg, cm; extra=Float64[])
+    write_log_row!(io, step, time, Rg, cm, Re2; extra=Float64[])
 
 One whitespace-delimited data row. `extra` appends optional column values.
 """
-function write_log_row!(io::IO, step::Integer, time::Real, Rg::Real, cm::Vec3;
+function write_log_row!(io::IO, step::Integer, time::Real, Rg::Real, cm::Vec3, Re2::Real;
                         extra::Vector{Float64}=Float64[])
-    @printf(io, "%d %.8g %.8g %.8g %.8g %.8g", step, time, Rg, cm[1], cm[2], cm[3])
+    @printf(io, "%d %.8g %.8g %.8g %.8g %.8g %.8g",
+            step, time, Rg, cm[1], cm[2], cm[3], Re2)
     for v in extra
         @printf(io, " %.8g", v)
     end

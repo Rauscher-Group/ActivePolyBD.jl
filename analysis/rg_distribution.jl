@@ -10,28 +10,50 @@ module RgDistribution
 using Printf
 using Statistics
 
-"""
-    read_rg(dir; warmup_frac=0.1) -> Vector{Float64}
+const COL_RG = 3    # scalar log: step time Rg cm_x cm_y cm_z Re2
+const COL_RE2 = 7
 
-Pool the R_G column (column 3) from every `obs_r*.dat` log in `dir`,
-discarding the first `warmup_frac` of each replica's samples as extra warm-up.
 """
-function read_rg(dir::AbstractString; warmup_frac::Real=0.1)
-    rg = Float64[]
+    read_column(dir, col) -> Vector{Float64}
+
+Pool column `col` from every `obs_r*.dat` log in `dir`. Every production
+sample is kept — the run's equilibration phase is what removes the initial
+transient, so no extra warm-up is discarded here. Rows too short to hold
+`col` are skipped, so logs written before a column existed are simply read
+as empty for it rather than erroring.
+"""
+function read_column(dir::AbstractString, col::Integer)
+    out = Float64[]
     for f in sort(readdir(dir))
         (startswith(f, "obs") && endswith(f, ".dat")) || continue
-        vals = Float64[]
         for line in eachline(joinpath(dir, f))
             (isempty(line) || startswith(line, "#")) && continue
             cols = split(line)
-            length(cols) >= 3 || continue
-            push!(vals, parse(Float64, cols[3]))
+            length(cols) >= col || continue
+            push!(out, parse(Float64, cols[col]))
         end
-        n0 = floor(Int, warmup_frac * length(vals))
-        append!(rg, @view vals[(n0 + 1):end])
     end
-    return rg
+    return out
 end
+
+"""
+    read_rg(dir) -> Vector{Float64}
+
+Pool the R_G column from every `obs_r*.dat` log in `dir`.
+"""
+read_rg(dir::AbstractString) = read_column(dir, COL_RG)
+
+"""
+    read_re2(dir) -> Vector{Float64}
+
+Pool the end-to-end R_e² column from every `obs_r*.dat` log in `dir`.
+"""
+read_re2(dir::AbstractString) = read_column(dir, COL_RE2)
+
+# Tolerate an empty series (a log written before the column existed) so one
+# missing column never takes down the whole summary.
+_mean(s::Vector{Float64}) = isempty(s) ? NaN : mean(s)
+_std(s::Vector{Float64}) = length(s) < 2 ? NaN : std(s)
 
 """
     pe_label(dir) -> Float64
@@ -70,8 +92,10 @@ end
 
 ascii_curve(dens, width=50) = begin
     m = maximum(dens; init=0.0)
-    m == 0 && return fill(' ', length(dens))
-    [repeat("█", round(Int, width * d / m)) for d in dens]
+    # A degenerate bin grid yields NaN/Inf densities; draw nothing rather than
+    # letting `round(Int, NaN)` throw.
+    (isfinite(m) && m > 0) || return fill("", length(dens))
+    [repeat("█", round(Int, width * clamp(d / m, 0, 1))) for d in dens]
 end
 
 """
@@ -80,9 +104,10 @@ end
 Read every `pe_*` subdirectory under `out_dir`, build P(R_G) per Pe on a
 shared bin grid, and write:
   - `<out_dir>/pRg_vs_Pe.csv`  : bin centers + density column per Pe
-  - `<out_dir>/mean_Rg_vs_Pe.csv` : Pe, mean, std, nsamples
+  - `<out_dir>/mean_Rg_vs_Pe.csv` : Pe, R_G mean/std, R_e² mean/std, nsamples
 An ASCII overlay and the summary table are printed. A PNG overlay is saved
-if `Plots` can be loaded.
+if `Plots` can be loaded. The distribution overlay is R_G only; R_e² is
+reported as summary statistics.
 """
 function analyze(out_dir::AbstractString; nbins::Integer=40)
     subdirs = sort(filter(d -> isdir(joinpath(out_dir, d)) && startswith(d, "pe_"),
@@ -91,20 +116,31 @@ function analyze(out_dir::AbstractString; nbins::Integer=40)
 
     pes = Float64[]
     samples = Vector{Float64}[]
+    re2s = Vector{Float64}[]
     for d in subdirs
         full = joinpath(out_dir, d)
         rg = read_rg(full)
         isempty(rg) && (@warn "no R_G samples in $full"; continue)
+        length(rg) < 2 && @warn "only $(length(rg)) R_G sample(s) in $full; the \
+            histogram and std will be degenerate — raise production_steps or \
+            lower log_every" dir=full
+        re2 = read_re2(full)
+        isempty(re2) && @warn "no R_e² column in $full; logs predate it" dir=full
         push!(pes, pe_label(full))
         push!(samples, rg)
+        push!(re2s, re2)
     end
     order = sortperm(pes)
-    pes, samples = pes[order], samples[order]
+    pes, samples, re2s = pes[order], samples[order], re2s[order]
 
     # Shared bin grid across all Pe for a clean overlay.
     lo = minimum(minimum.(samples))
     hi = maximum(maximum.(samples))
-    pad = 0.02 * (hi - lo + eps())
+    # A single sample (or a perfectly flat series) gives span == 0; pad relative
+    # to the data's magnitude, not an absolute eps(), or every edge rounds to the
+    # same float and the densities all come out NaN.
+    span = hi - lo
+    pad = span > 0 ? 0.02 * span : max(0.02 * abs(lo), 1e-6)
     edges = range(lo - pad, hi + pad; length=nbins + 1)
     centers = (edges[1:end-1] .+ edges[2:end]) ./ 2
 
@@ -123,22 +159,26 @@ function analyze(out_dir::AbstractString; nbins::Integer=40)
         end
     end
 
-    # --- CSV: mean R_G vs Pe -------------------------------------------
+    # --- CSV: mean R_G and R_e² vs Pe ----------------------------------
     mean_path = joinpath(out_dir, "mean_Rg_vs_Pe.csv")
     open(mean_path, "w") do io
-        println(io, "Pe,mean_Rg,std_Rg,nsamples")
-        for (pe, s) in zip(pes, samples)
-            @printf(io, "%g,%.6g,%.6g,%d\n", pe, mean(s), std(s), length(s))
+        println(io, "Pe,mean_Rg,std_Rg,mean_Re2,std_Re2,nsamples")
+        for (pe, s, e) in zip(pes, samples, re2s)
+            @printf(io, "%g,%.6g,%.6g,%.6g,%.6g,%d\n",
+                    pe, mean(s), std(s), _mean(e), _std(e), length(s))
         end
     end
 
     # --- Console summary ------------------------------------------------
-    println("\n⟨R_G⟩ vs Pe  (N chain, pooled over replicas):")
-    println(rpad("Pe", 10), rpad("⟨R_G⟩", 12), rpad("std", 12), "nsamples")
-    for (pe, s) in zip(pes, samples)
+    println("\n⟨R_G⟩ and ⟨R_e²⟩ vs Pe  (N chain, pooled over replicas):")
+    println(rpad("Pe", 10), rpad("⟨R_G⟩", 12), rpad("std", 12),
+            rpad("⟨R_e²⟩", 12), rpad("std", 12), "nsamples")
+    for (pe, s, e) in zip(pes, samples, re2s)
         println(rpad(@sprintf("%g", pe), 10),
                 rpad(@sprintf("%.4f", mean(s)), 12),
                 rpad(@sprintf("%.4f", std(s)), 12),
+                rpad(@sprintf("%.4f", _mean(e)), 12),
+                rpad(@sprintf("%.4f", _std(e)), 12),
                 length(s))
     end
 

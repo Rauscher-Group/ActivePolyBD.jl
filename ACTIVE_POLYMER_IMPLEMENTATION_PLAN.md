@@ -337,8 +337,8 @@ All in reduced units; cheap for N ≤ 40. **R_G is computed during production an
 
 ## 7. I/O — `io.jl`
 
-- **XYZ trajectory** (extended-XYZ friendly): per frame `N`, a comment line `step=… time=… Rg=…`, then `element x y z` per monomer. Terminal (passive) monomers use element `O`; interior use `C`, so ends are visible in VMD/OVITO.
-- **Scalar log** (`.dat`, whitespace-delimited, `#`-commented header): `step time Rg cm_x cm_y cm_z`, one row every `log_every`. This file is the input to the P(R_G) analysis.
+- **XYZ trajectory** (extended-XYZ friendly): per frame `N`, a comment line `step=… time=… Rg=…`, then `element x y z` per monomer. Terminal (passive) monomers use element `O`; interior use `C`, so ends are visible in VMD/OVITO. Coordinates are shifted at write time so monomer 1 (a passive end) is at the origin in every frame, which keeps the chain in view as the center of mass drifts. Stored positions are untouched: the drift stays physical (Section 14) and is still logged in `cm_*`.
+- **Scalar log** (`.dat`, whitespace-delimited, `#`-commented header): `step time Rg cm_x cm_y cm_z Re2`, one row every `log_every`, where `Re2 = |r_N − r_1|²` is the squared end-to-end distance. It is the last column so the indices of the earlier fields are stable. This file is the input to the P(R_G) analysis.
 - **Checkpoint/restart:** `save_checkpoint`/`load_checkpoint`/`restart!` snapshot `positions`, `step`, and the **full RNG state** using the `Serialization` stdlib (see Section 11 for why not JLD2). Writes go to a `.tmp` file then atomically `mv` into place so a crash can't truncate a checkpoint. `restart!` loads a checkpoint into an existing `System` and returns `(step, rng)` to continue production.
 - All frequencies are user parameters.
 
@@ -435,7 +435,7 @@ All checks run in `test/` (`julia --project=. -e 'using Pkg; Pkg.test()'`). **Re
 The one scientific deliverable. Workflow (`scripts/sweep.jl` + `scripts/sweep.toml`):
 1. Run the same system (fixed N, dt, equilibration/production lengths) at several Pe values — default `Pe ∈ {0, 0.1, 1, 5, 10, 50}` — with a few replicas each for smoother histograms. Each Pe gets its own subdirectory `<out_dir>/pe_<value>/` containing per-replica logs and a `pe.txt` label.
 2. Each run logs R_G every `log_every` steps during production.
-3. `analysis/rg_distribution.jl` (module `RgDistribution`) reads all logs, discards a warm-up fraction, histograms R_G per Pe on a shared grid, and writes:
+3. `analysis/rg_distribution.jl` (module `RgDistribution`) reads all logs (keeping every production sample — the equilibration phase already removes the initial transient), histograms R_G per Pe on a shared grid, and writes:
    - `pRg_vs_Pe.csv` — bin centers + P(R_G) density per Pe,
    - `mean_Rg_vs_Pe.csv` — ⟨R_G⟩, std, and sample count per Pe,
    - an ASCII overlay + summary table to stdout,

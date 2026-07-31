@@ -66,6 +66,16 @@ end
 @inline end_to_end(pos::Vector{Vec3}) = pos[end] - pos[1]
 
 """
+    end_to_end_sq(pos) -> Float64
+
+`R_e² = |r_N - r_1|²`, without the square root. Logged during production.
+"""
+@inline function end_to_end_sq(pos::Vector{Vec3})
+    d = end_to_end(pos)
+    return dot(d, d)
+end
+
+"""
     backbone_cosangles(pos) -> Vector{Float64}
 
 `cosθ_i = û_{i-1,i} · û_{i,i+1}` at interior monomers i = 2 … N-1.

@@ -4,14 +4,15 @@
 # seed ⊻ replica_id, own suffixed output files) and embarrassingly parallel.
 
 """
-    ReplicaResult(replica_id, rg_samples, log_path, xyz_path)
+    ReplicaResult(replica_id, rg_samples, re2_samples, log_path, xyz_path)
 
-Per-replica production output: the in-memory R_G time series (sampled at
-`log_every`) plus the paths written.
+Per-replica production output: the in-memory R_G and R_e² time series (both
+sampled at `log_every`) plus the paths written.
 """
 struct ReplicaResult
     replica_id::Int
     rg_samples::Vector{Float64}
+    re2_samples::Vector{Float64}
     log_path::String
     xyz_path::String
 end
@@ -43,7 +44,8 @@ steps, writing the XYZ trajectory, scalar log, and checkpoints at their
 strides. The center of mass is never recentered during production — its free
 drift is physical (§14). If `restart_path` points to a checkpoint, positions,
 step, and RNG are loaded and production continues from there (equilibration
-is skipped).
+is skipped). `collect_rg` governs whether the R_G and R_e² samples are also
+retained in memory on the returned `ReplicaResult`.
 """
 function run_single!(sys::System, params::SimParams, rng, output::OutputSpec;
                      replica_id::Integer=0, restart_path=nothing, collect_rg::Bool=true)
@@ -63,6 +65,7 @@ function run_single!(sys::System, params::SimParams, rng, output::OutputSpec;
     ckpt_path = suffixed(output.checkpoint_file, replica_id)
 
     rg_samples = Float64[]
+    re2_samples = Float64[]
     xyz_io = open(xyz_path, start_step == 0 ? "w" : "a")
     log_io = open(log_path, start_step == 0 ? "w" : "a")
     try
@@ -73,8 +76,12 @@ function run_single!(sys::System, params::SimParams, rng, output::OutputSpec;
             if params.log_every > 0 && k % params.log_every == 0
                 Rg = radius_of_gyration(sys.positions)
                 cm = center_of_mass(sys.positions)
-                write_log_row!(log_io, k, t, Rg, cm)
-                collect_rg && push!(rg_samples, Rg)
+                Re2 = end_to_end_sq(sys.positions)
+                write_log_row!(log_io, k, t, Rg, cm, Re2)
+                if collect_rg
+                    push!(rg_samples, Rg)
+                    push!(re2_samples, Re2)
+                end
             end
             if params.xyz_every > 0 && k % params.xyz_every == 0
                 Rg = radius_of_gyration(sys.positions)
@@ -90,7 +97,7 @@ function run_single!(sys::System, params::SimParams, rng, output::OutputSpec;
         close(log_io)
     end
 
-    return ReplicaResult(replica_id, rg_samples, log_path, xyz_path)
+    return ReplicaResult(replica_id, rg_samples, re2_samples, log_path, xyz_path)
 end
 
 """

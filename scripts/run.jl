@@ -25,9 +25,11 @@ function main(args)
 
     total_steps = cfg.n_replicas * (cfg.params.n_equil + cfg.params.n_prod)
     all_rg = reduce(vcat, (r.rg_samples for r in results); init=Float64[])
+    all_re2 = reduce(vcat, (r.re2_samples for r in results); init=Float64[])
     @info "Done" elapsed_s=round(elapsed; digits=2) steps_per_s=round(total_steps/elapsed; digits=0) n_rg_samples=length(all_rg)
     if !isempty(all_rg)
         @info "R_G (pooled over replicas)" mean=round(mean(all_rg); digits=4) std=round(std(all_rg); digits=4)
+        @info "R_e² (pooled over replicas)" mean=round(mean(all_re2); digits=4) std=round(std(all_re2); digits=4)
     end
     return 0
 end

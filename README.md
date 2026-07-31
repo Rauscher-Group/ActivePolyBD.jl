@@ -56,9 +56,12 @@ julia -t auto --project=. scripts/run.jl scripts/example.toml
 ```
 
 Writes an extended-XYZ trajectory and a scalar `.dat` log (columns
-`step time Rg cm_x cm_y cm_z`), one set per replica (files suffixed `_r<id>`).
-Terminal beads are labeled `O`, interior beads `C`, so passive ends are visible
-in VMD/OVITO.
+`step time Rg cm_x cm_y cm_z Re2`, where `Re2` is the squared end-to-end
+distance), one set per replica (files suffixed `_r<id>`). Terminal beads are
+labeled `O`, interior beads `C`, so passive ends are visible in VMD/OVITO.
+Each XYZ frame is shifted so monomer 1 (a passive end) sits at the origin,
+keeping the chain in view as the center of mass drifts; the drift itself is
+unaltered and still recorded in the `cm_*` log columns.
 
 ## Headline result: P(R_G) vs Pe
 

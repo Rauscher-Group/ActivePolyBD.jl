@@ -42,6 +42,13 @@ end
 @testset "end-to-end and backbone angles" begin
     pos = [ActivePolyBD.Vec3(Float64(i), 0, 0) for i in 1:6]
     @test end_to_end(pos) == ActivePolyBD.Vec3(5, 0, 0)
+    @test end_to_end_sq(pos) == 25.0
+    @test isapprox(end_to_end_sq(pos), dot(end_to_end(pos), end_to_end(pos)); rtol=1e-12)
+
+    # R_e² is a rigid-body invariant: unchanged by translating the whole chain.
+    shifted = [r + ActivePolyBD.Vec3(3, -7, 2) for r in pos]
+    @test isapprox(end_to_end_sq(shifted), end_to_end_sq(pos); rtol=1e-12)
+
     cosθ = backbone_cosangles(pos)
     @test length(cosθ) == 4
     @test all(c -> isapprox(c, 1.0), cosθ)         # straight chain ⇒ cosθ = 1
