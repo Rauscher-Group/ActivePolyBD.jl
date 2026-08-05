@@ -10,7 +10,7 @@ module RgDistribution
 using Printf
 using Statistics
 
-const COL_RG = 3    # scalar log: step time Rg cm_x cm_y cm_z Re2
+const COL_RG = 3    # scalar log: step time Rg cm_x cm_y cm_z Re2 U_bond U_nb dUdc
 const COL_RE2 = 7
 
 """

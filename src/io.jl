@@ -43,6 +43,16 @@ end
 # --- Scalar observable log ----------------------------------------------
 
 """
+    ENERGY_COLS
+
+The potential-energy columns the driver appends to every log, in order:
+bonded energy, non-bonded energy, and `∂U_nb/∂c` (the thermodynamic
+integration observable — see [`nonbonded_energies`](@ref)). They occupy
+columns 8, 9, 10; `analysis/thermo_integration.jl` reads them by those indices.
+"""
+const ENERGY_COLS = ["U_bond", "U_nb", "dUdc"]
+
+"""
     write_log_header(io; extra_cols=String[])
 
 Comment header for the scalar `.dat` log. Base columns are

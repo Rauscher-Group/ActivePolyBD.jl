@@ -56,8 +56,10 @@ julia -t auto --project=. scripts/run.jl scripts/example.toml
 ```
 
 Writes an extended-XYZ trajectory and a scalar `.dat` log (columns
-`step time Rg cm_x cm_y cm_z Re2`, where `Re2` is the squared end-to-end
-distance), one set per replica (files suffixed `_r<id>`). Terminal beads are
+`step time Rg cm_x cm_y cm_z Re2 U_bond U_nb dUdc`, where `Re2` is the squared
+end-to-end distance and the last three are the bonded energy, the non-bonded
+energy, and `∂U_nb/∂k` — see the TI section below), one set per replica (files
+suffixed `_r<id>`). Terminal beads are
 labeled `O`, interior beads `C`, so passive ends are visible in VMD/OVITO.
 Each XYZ frame is shifted so monomer 1 (a passive end) sits at the origin,
 keeping the chain in view as the center of mass drifts; the drift itself is
@@ -79,6 +81,34 @@ Runs the same chain at several Pe values (each in its own subdirectory of
 
 Expected qualitative trend: **⟨R_G⟩ decreases and P(R_G) shifts to smaller
 values / sharpens as Pe increases** (coil → globule-like).
+
+## Thermodynamic integration: phantom chain → excluded volume
+
+```bash
+julia -t auto --project=. scripts/ti.jl scripts/ti.toml
+```
+
+Computes the free-energy cost of turning on excluded volume in the **passive**
+system, `ΔF = F(k=100) − F(k=0)`, by integrating the logged `dUdc` column:
+
+    ΔF = ∫₀¹⁰⁰ ⟨∂U_nb/∂k⟩_k dk
+
+`SoftRepulsive` is `½k(r−r_c)²` — finite at `r = 0` and linear in `k` — so `k`
+is itself a valid coupling parameter with no soft-core singularity at the
+`k → 0` endpoint. Each k value runs in its own `ti_out/k_*/` subdirectory; the
+bonded spring is held fixed at `k = 100` throughout. Then
+`analysis/thermo_integration.jl` writes `ti_out/ti_integrand.csv` and
+`ti_out/ti_result.txt`.
+
+Two constraints the driver enforces up front: **Pe must be 0** (the tangential
+active force is non-conservative, so there is no free energy to integrate), and
+the non-bonded potential must be `soft_repulsive` (linear coupling to zero is
+ill-behaved for a potential that diverges at `r → 0`, such as WCA).
+
+⟨∂U/∂k⟩ is flat at small k and decays roughly as `C/k` at large k, so the grid
+is uniform in `s = ln(1 + k/a)` and the integration is done in `s`, where the
+integrand `(k+a)⟨∂U/∂k⟩` is bounded at both ends. `a` is a quadrature knob, not
+physics — it cannot change ΔF, only how well a given grid resolves it.
 
 ## Julia API
 

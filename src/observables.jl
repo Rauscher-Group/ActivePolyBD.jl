@@ -125,3 +125,87 @@ function asphericity(acc::AsphericityAccumulator)
     acc.n == 0 && return NaN
     return (acc.sum_tr2 - acc.sum_3m) / acc.sum_tr2
 end
+
+# --- Potential energies --------------------------------------------------
+#
+# These mirror the loops in forces.jl exactly — same bond list, same
+# `bonded_exclusion`, same strict `r < cutoff` test — accumulating `energy`
+# instead of calling `pair_force`. That duplication is deliberate (the force
+# loop stays allocation-free and branch-free) but it must not drift: the
+# finite-difference tests in test/test_energy.jl differentiate these sums and
+# compare against the force loops, and will fail if the two ever disagree.
+#
+# The active force is non-conservative (§2.3) and therefore has no energy; it
+# never appears here.
+
+"""
+    bonded_energy(pos, bonded) -> Float64
+    bonded_energy(sys) -> Float64
+
+Total backbone spring energy `Σ_i V(|r_i - r_{i+1}|)` over the N-1 bonds.
+"""
+function bonded_energy(pos::Vector{Vec3}, bonded::BondedPotential)
+    N = length(pos)
+    U = 0.0
+    @inbounds for i in 1:N-1
+        U += energy(bonded, norm(pos[i] - pos[i+1]))
+    end
+    return U
+end
+
+bonded_energy(sys::System) = bonded_energy(sys.positions, sys.bonded)
+
+"""
+    pair_energy(pos, pair, neighbors) -> Float64
+
+Total non-bonded energy: `Σ_{i<j} V(r_ij)` over pairs that are not backbone
+neighbors and lie inside the cutoff. Selection logic is identical to
+[`add_pair_forces!`](@ref).
+"""
+function pair_energy(pos::Vector{Vec3}, pair::PairPotential, ::AllPairs)
+    N = length(pos)
+    rc = cutoff(pair)
+    rc2 = rc * rc
+    U = 0.0
+    @inbounds for i in 1:N-1
+        for j in i+1:N
+            bonded_exclusion(i, j) && continue
+            d = pos[i] - pos[j]
+            r2 = dot(d, d)
+            r2 < rc2 || continue          # r >= cutoff contributes nothing
+            U += energy(pair, sqrt(r2))
+        end
+    end
+    return U
+end
+
+# Matches the VerletList fallback in forces.jl so energies and forces stay
+# consistent under either strategy.
+pair_energy(pos::Vector{Vec3}, pair::PairPotential, ::VerletList) =
+    pair_energy(pos, pair, AllPairs())
+
+"""
+    nonbonded_energy(sys) -> Float64
+
+Total non-bonded energy of `sys` at its current coupling.
+"""
+nonbonded_energy(sys::System) = pair_energy(sys.positions, sys.pair, sys.neighbors)
+
+"""
+    nonbonded_energies(sys) -> (U_nb, dUdc)
+
+Both non-bonded energy quantities from a **single** pair loop: the total energy
+`U_nb` and its derivative with respect to the coupling parameter,
+`dUdc = ∂U_nb/∂c`, the observable thermodynamic integration averages.
+
+The loop is run at unit coupling, giving `dUdc` directly; `U_nb = c * dUdc`
+then follows exactly from the linearity invariant documented in
+`potentials_pair.jl`. Doing it this way (rather than summing at `c` and
+dividing) keeps `dUdc` well defined at `c = 0`, where `U_nb` vanishes and the
+quotient would be 0/0 — that endpoint is the phantom chain, the whole reason
+the observable exists.
+"""
+function nonbonded_energies(sys::System)
+    dUdc = pair_energy(sys.positions, with_coupling(sys.pair, 1.0), sys.neighbors)
+    return (coupling(sys.pair) * dUdc, dUdc)
+end

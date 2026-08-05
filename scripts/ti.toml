@@ -1,0 +1,64 @@
+# Thermodynamic integration: phantom chain (non-bonded k = 0) -> full excluded
+# volume (k = 100), at Pe = 0.
+#   julia -t auto scripts/ti.jl scripts/ti.toml
+#
+# The [system], [interactions], [integrator], [output], and [replicas] tables
+# are the shared base for every coupling value. The [ti] table sets the k grid
+# and the parent output directory; each k gets its own subdirectory of logs.
+#
+# ONLY interactions.nonbonded.k varies. The bonded spring stays at k = 100.
+
+[ti]
+# Grid uniform in s = ln(1 + k/a), which clusters points at small k where
+# ⟨∂U/∂k⟩ varies and thins them in the C/k tail. Give k_values explicitly to
+# override (e.g. to refine a region after a first pass):
+k_values = [0.25, 0.8, 1.7, 3.0, 4.8, 7.5, 11.5, 17.5, 25.7, 38.0, 56.0, 82.0]
+#k_min    = 0.0
+#k_max    = 100.0
+#n_points = 13         # odd -> even interval count -> composite Simpson throughout
+# `a` is a quadrature knob, NOT a physical parameter: it is a change of
+# variables and cannot change ΔF, only how well this grid resolves the
+# integrand. Set it near the crossover scale (~1 in reduced units).
+a           = 1.0
+seed_offset = true    # decorrelate k-points so the propagated error bar is honest
+out_dir     = "ti_out"
+
+[system]
+N          = 20
+dimensions = 3
+seed       = 51515
+init       = "saw"
+
+[interactions.bonded]
+type = "harmonic"
+k    = 100.0          # held FIXED across the integration
+r0   = 1.0
+
+[interactions.nonbonded]
+type   = "soft_repulsive"   # must be finite at r = 0; WCA is rejected
+k      = 100.0              # overridden per TI point
+cutoff = 1.0                # coupling-independent, so the pair list never changes
+
+[activity]
+type = "none"         # Pe MUST be 0: the active force is non-conservative
+
+[integrator]
+dt                  = 1e-3
+# ⟨∂U/∂k⟩ is a simple mean and converges far faster than the P(R_G) tails the
+# headline sweep needs, so these are much shorter than sweep.toml's.
+equilibration_steps = 10_000_000
+production_steps    = 100_000_000
+
+[output]
+xyz_file  = "traj.xyz"
+xyz_every = 0           # 0 disables trajectory output: 13 k-points x 10 replicas
+                        # of frames is a lot of disk for no benefit here
+# columns: step time Rg cm_x cm_y cm_z Re2 U_bond U_nb dUdc
+log_file         = "obs.dat"
+log_every        = 10_000        # 10^4 samples per replica
+checkpoint_file  = "checkpoint.jls"
+checkpoint_every = 5_000_000
+
+[replicas]
+n_replicas = 10       # >= 2 required for an error bar (replica scatter)
+parallel   = "threads"

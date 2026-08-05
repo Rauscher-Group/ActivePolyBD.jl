@@ -5,6 +5,10 @@
 #   energy(p, r) -> V(r)   (optional)
 #   cutoff(p)    -> interaction range; pairs with r >= cutoff contribute nothing
 #
+# For thermodynamic integration each also supplies:
+#   coupling(p)         -> the scalar prefactor that scales the whole potential
+#   with_coupling(p, c) -> the same potential with that prefactor replaced
+#
 # The pair loop skips backbone-bonded neighbors (|i-j| == 1); that exclusion
 # lives in the neighbor strategy, not here.
 
@@ -59,3 +63,41 @@ end
         return 0.0
     end
 end
+
+# --- Coupling parameter (thermodynamic integration) ----------------------
+#
+# `coupling(p)` names the parameter that scales the whole potential, and
+# `with_coupling(p, c)` rebuilds `p` with that parameter set to `c`. Together
+# they let a TI driver vary the interaction strength without hard-coding which
+# field to touch (`k` here, `eps` there).
+#
+# Both obey the invariant the TI machinery relies on — `energy` is linear and
+# homogeneous in the coupling:
+#
+#     energy(with_coupling(p, c), r) == c * energy(with_coupling(p, 1), r)
+#
+# so ∂V/∂c is exactly the unit-coupling energy, and `cutoff` is
+# coupling-independent, so which pairs interact never changes with `c`.
+#
+# Linear-coupling TI to c = 0 additionally requires V to stay *bounded* as
+# r → 0. That holds for `SoftRepulsive` (a finite parabola) but NOT for `WCA`
+# (r^-12 divergence): the accessors are defined for both for interface
+# completeness, but only `SoftRepulsive` is a valid TI endpoint.
+
+"""
+    coupling(p) -> Float64
+
+The scalar prefactor scaling the whole pair potential: `k` for
+[`SoftRepulsive`](@ref), `eps` for [`WCA`](@ref).
+"""
+@inline coupling(p::SoftRepulsive) = p.k
+@inline coupling(p::WCA) = p.eps
+
+"""
+    with_coupling(p, c) -> PairPotential
+
+`p` with its coupling parameter replaced by `c`, all other parameters (and
+therefore `cutoff`) unchanged.
+"""
+@inline with_coupling(p::SoftRepulsive, c::Real) = SoftRepulsive(Float64(c), p.cutoff)
+@inline with_coupling(p::WCA, c::Real) = WCA(Float64(c), p.sigma)

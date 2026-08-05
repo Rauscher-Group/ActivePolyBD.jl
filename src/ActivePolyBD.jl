@@ -41,13 +41,14 @@ export ActivityModel, NoActivity, TangentialActivity
 export NeighborStrategy, AllPairs, VerletList
 
 # Physics
-export dVdr, energy, cutoff
+export dVdr, energy, cutoff, coupling, with_coupling
 export compute_forces!, bd_step!
 
 # Observables
 export center_of_mass, gyration_tensor, radius_of_gyration, radius_of_gyration_sq
 export gyration_eigenvalues, end_to_end, end_to_end_sq, backbone_cosangles
 export AsphericityAccumulator, asphericity
+export bonded_energy, pair_energy, nonbonded_energy, nonbonded_energies
 
 # Init / IO
 export initialize_chain

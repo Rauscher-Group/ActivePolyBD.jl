@@ -38,7 +38,8 @@ production_steps    = 100_000_000
 [output]
 xyz_file         = "traj.xyz"   	# monomer 1 is written at the origin in every frame
 xyz_every        = 10_000		# total of 10^4 frames
-# columns: step time Rg cm_x cm_y cm_z Re2   (Re2 = end-to-end distance squared)
+# columns: step time Rg cm_x cm_y cm_z Re2 U_bond U_nb dUdc
+#          (Re2 = end-to-end distance squared; dUdc = ∂U_nb/∂k, the TI integrand)
 log_file         = "obs.dat"
 log_every        = 10_000
 checkpoint_file  = "checkpoint.jls"
